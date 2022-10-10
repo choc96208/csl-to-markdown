@@ -1,12 +1,14 @@
+
 // Name : csl_to_markdown
-// Description : Makes your Zotero's/Mendeley's bibliography export compatible with markdown
+// Description : Makes Zotero's bibliography export compatible with markdown
 // Author : eonm<eon.mathis@gmail.com>
 // Licence : MIT
 // usage : ./csl_to_markdown my_csl_file.csl > my_compatible_csl_file.csl
 
 use std::fs::File;
-use std::io::{Read, Cursor, Write};
+use std::io::{Read, Cursor};
 use std::path::Path;
+use std::env;
 
 extern crate regex;
 use regex::Regex;
@@ -16,40 +18,13 @@ use quick_xml::Writer;
 use quick_xml::Reader;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
-extern crate clap;
-use clap::{Arg, App};
-
 fn main() {
-    let matches = App::new("csl_to_markdown")
-        .version("0.2.0")
-        .author("eonm <eon.mathis@gmail.com>")
-        .about("Makes your Zotero's/Mendeley's bibliography export compatible with markdown")
-        .arg(Arg::with_name("input")
-                  .short("i")
-                  .long("input")
-                  .required(true)
-                  .takes_value(true)
-                  .help("input csl file"))
-         .arg(Arg::with_name("output")
-                  .short("o")
-                  .long("output")
-                  .required(false)
-                  .takes_value(true)
-                  .help("output csl file"))
-        .get_matches();
-
-    let csl_file_location = matches.value_of("input").expect("Can't get csl file location");
-    let output_file = matches.value_of("output");
-    let parsed_xml = parse_xml_file(&Path::new(csl_file_location));
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 { panic!("Please specify a csl file to process") };
+    let xml_file_location = Path::new(&args[1]);
+    let parsed_xml = parse_xml_file(xml_file_location);
     let result_string = String::from_utf8_lossy(&parsed_xml);
-
-    match output_file {
-        Some(file_name) => {
-            let mut f = File::create(file_name).expect("Failed to create output file");
-            f.write_all(&parsed_xml).expect("Failed to write output in the file");
-        },
-        None => print!("{}", remove_formated_amp(result_string.to_string())),
-    };
+    println!("{}", remove_formated_amp(result_string.to_string()));
 }
 
 
@@ -118,7 +93,7 @@ fn parse_xml (mut reader : Reader<&[u8]>) -> Vec<u8> {
             },
             Ok(Event::Start(ref e)) if e.name() == b"layout" => {
                 let mut elem = BytesStart::owned(b"layout".to_vec(), 4);
-                let mut attrs = e.attributes().collect::<Result<Vec<_>,quick_xml::Error>>().expect("Can't retrieve xml attibutes");
+                let mut attrs = e.attributes().collect::<Result<Vec<_>,quick_xml::Error>>().expect("can't retrieve xml attibutes");
                     for attribute in attrs {
                         match attribute.key {
                             b"suffix" => {
@@ -139,7 +114,7 @@ fn parse_xml (mut reader : Reader<&[u8]>) -> Vec<u8> {
                 assert!(writer.write_event(Event::Start(elem)).is_ok());
             },
             Ok(Event::Empty(ref e)) if e.name() == b"text" => {
-                    let mut attrs = e.attributes().collect::<Result<Vec<_>,quick_xml::Error>>().expect("Can't retrieve xml attibutes");
+                    let mut attrs = e.attributes().collect::<Result<Vec<_>,quick_xml::Error>>().expect("can't retrieve xml attibutes");
                     let mut elem = BytesStart::owned(b"text".to_vec(), 4);
 
                     let mut prefix : Vec<String> = vec!();
@@ -151,8 +126,8 @@ fn parse_xml (mut reader : Reader<&[u8]>) -> Vec<u8> {
                             b"suffix" => suffix.push(String::from_utf8_lossy(&attribute.value).into_owned()),
                             b"font-style" => {
                                 if String::from_utf8_lossy(&attribute.value) == "italic" {
-                                    prefix.insert(0, "_".to_string());
-                                    suffix.push("_".to_string());
+                                    prefix.insert(0, "*".to_string());
+                                    suffix.push("*".to_string());
                                 } else if String::from_utf8_lossy(&attribute.value) == "bold" {
                                     prefix.insert(0, "**".to_string());
                                     suffix.push("**".to_string());
@@ -286,7 +261,7 @@ mod tests {
 
         let expected_xml_output_string = r#"
             <text/>
-            <text font-style="italic" prefix="_" suffix="_"/>
+            <text font-style="italic" prefix="*" suffix="*"/>
             <text/>
         "#;
 
@@ -329,8 +304,8 @@ mod tests {
             <title id="title">_MD_</title>
             <title-short id="title-short">_MD_</title-short>
             <id id="id">/_MD_</id>
-            <text test-attribute="test" font-style="italic" prefix="_test" suffix="_"/>
-            <text test-attribute="test" font-style="italic" prefix="_" suffix="_test"/>
+            <text test-attribute="test" font-style="italic" prefix="*test" suffix="*"/>
+            <text test-attribute="test" font-style="italic" prefix="*" suffix="*test"/>
             <text test-attribute="test" font-style="bold" prefix="**test" suffix="**"/>
             <text test-attribute="test" font-style="bold" prefix="**" suffix="**test"/>
         "#;
